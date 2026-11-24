@@ -45,8 +45,9 @@ minutes. GitHub may delay scheduled runs; schedules require the workflow on the
 default branch. GitHub disables schedules after 60 days without repository
 activity; each run re-enables the workflow through the API to prevent that
 (a failure is logged as `keepalive: failed` and does not fail the run).
-Runs cannot overlap and have a five-minute limit. Large initial copies may need
-longer; completed repositories are skipped on later runs.
+Runs cannot overlap. A run may take up to 60 minutes and each clone or push up
+to 25 minutes, so large repositories (about 1 GB) can be copied; idle runs only
+compare refs and finish quickly.
 
 Run manually:
 

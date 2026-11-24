@@ -17,6 +17,8 @@ import urllib.request
 
 GITHUB_USER = "puigjoaco"
 GITLAB_USER = "puig.joaco"
+# Large repositories (about 1 GB) need minutes for the first copy.
+TRANSFER_TIMEOUT = 1500
 REFSPECS = ("+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*")
 
 
@@ -161,7 +163,7 @@ def unchanged(source_refs, target_refs):
     return source_refs == target_refs
 
 
-def git(token, host, *args, cwd=None):
+def git(token, host, *args, cwd=None, timeout=120):
     username = "x-access-token" if host == "github.com" else "oauth2"
     authorization = base64.b64encode(f"{username}:{token}".encode()).decode()
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "1",
@@ -171,7 +173,7 @@ def git(token, host, *args, cwd=None):
     try:
         result = subprocess.run(
             ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", *args],
-            cwd=cwd, env=env, capture_output=True, text=True, timeout=120)
+            cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         raise MirrorError("git command failed or timed out") from None
     if result.returncode:
@@ -219,19 +221,20 @@ def mirror_repository(repo, github_token, gitlab_token, gitlab, namespace, dry_r
 
     with tempfile.TemporaryDirectory(prefix="gitlab-mirror-") as directory:
         bare = os.path.join(directory, "repository.git")
-        git(github_token, "github.com", "clone", "--mirror", "--quiet", source_url, bare)
+        git(github_token, "github.com", "clone", "--mirror", "--quiet", source_url, bare,
+            timeout=TRANSFER_TIMEOUT)
         unprotect_branches(gitlab, project)
         # GitLab refuses deletion of its default branch. Create the new default
         # first, then select it before the final pruning push.
         default = repo.get("default_branch")
         if default and f"refs/heads/{default}" in source_refs and project.get("default_branch") != default:
             git(gitlab_token, "gitlab.com", "push", "--quiet", target_url,
-                f"+refs/heads/{default}:refs/heads/{default}", cwd=bare)
+                f"+refs/heads/{default}:refs/heads/{default}", cwd=bare, timeout=TRANSFER_TIMEOUT)
             gitlab.request("PUT", f"/projects/{project['id']}", {"default_branch": default})
         # The first push can automatically protect the default branch.
         unprotect_branches(gitlab, project)
         git(gitlab_token, "gitlab.com", "push", "--quiet", "--prune", target_url,
-            *REFSPECS, cwd=bare)
+            *REFSPECS, cwd=bare, timeout=TRANSFER_TIMEOUT)
         unprotect_branches(gitlab, project)
 
 
