@@ -127,18 +127,6 @@ def renew_gitlab_token(gitlab, token, secrets_github_token, today=None):
     return new_token
 
 
-def keep_schedule_alive(secrets_github_token):
-    # GitHub disables schedules after 60 days without repository activity;
-    # re-enabling the workflow through the API resets that timer.
-    if not secrets_github_token:
-        return
-    github = API("https://api.github.com", secrets_github_token, github=True)
-    try:
-        github.request("PUT", "/repos/puigjoaco/gitlab-mirror/actions/workflows/mirror.yml/enable")
-    except MirrorError as error:
-        print(f"keepalive: failed: {error}", flush=True)
-
-
 def owned_repositories(github):
     # /user/repos includes private repos, forks and archived repos.
     return [repo for repo in github.pages("/user/repos?affiliation=owner")
@@ -280,8 +268,6 @@ def main():
         namespace = gitlab.request("GET", "/namespaces/" + urllib.parse.quote(GITLAB_USER, safe=""))
         if namespace["full_path"] != GITLAB_USER or namespace["kind"] != "user":
             raise MirrorError("GitLab namespace does not match")
-        if not args.dry_run:
-            keep_schedule_alive(secrets_github_token)
         repositories = owned_repositories(github)
         return run_repositories(repositories, lambda repo: mirror_repository(
             repo, github_token, gitlab_token, gitlab, namespace, args.dry_run))

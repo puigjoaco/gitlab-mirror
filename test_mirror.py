@@ -322,13 +322,12 @@ class RenewalIntegrationTests(unittest.TestCase):
     @patch.dict(os.environ, {"SOURCE_GITHUB_TOKEN": "github-placeholder",
                              "GITLAB_TOKEN": "old-placeholder",
                              "SECRETS_GITHUB_TOKEN": "saving-placeholder"}, clear=True)
-    @patch("mirror.keep_schedule_alive")
     @patch("mirror.run_repositories")
     @patch("mirror.mirror_repository")
     @patch("mirror.owned_repositories", return_value=[repository()])
     @patch("mirror.API")
     @patch("mirror.renew_gitlab_token", return_value="new-placeholder")
-    def test_same_run_uses_new_token_and_api(self, renew, api, owned, sync, run, keepalive):
+    def test_same_run_uses_new_token_and_api(self, renew, api, owned, sync, run):
         namespace = {"id": 7, "full_path": mirror.GITLAB_USER, "kind": "user"}
         github, old_gitlab, new_gitlab = Mock(), Mock(), Mock()
         api.side_effect = [github, old_gitlab, new_gitlab]
@@ -342,7 +341,6 @@ class RenewalIntegrationTests(unittest.TestCase):
                          call("https://gitlab.com/api/v4", "new-placeholder"))
         self.assertEqual(sync.call_args.args[2], "new-placeholder")
         self.assertIs(sync.call_args.args[3], new_gitlab)
-        keepalive.assert_called_once_with("saving-placeholder")
 
     @patch.dict(os.environ, {"SOURCE_GITHUB_TOKEN": "github-placeholder",
                              "GITLAB_TOKEN": "old-placeholder"}, clear=True)
@@ -350,14 +348,12 @@ class RenewalIntegrationTests(unittest.TestCase):
     @patch("mirror.owned_repositories", return_value=[])
     @patch("mirror.API")
     @patch("mirror.renew_gitlab_token")
-    @patch("mirror.keep_schedule_alive")
-    def test_dry_run_skips_rotation(self, keepalive, renew, api, owned, run):
+    def test_dry_run_skips_rotation(self, renew, api, owned, run):
         api.return_value.request.return_value = {
             "full_path": mirror.GITLAB_USER, "kind": "user"}
         with patch("sys.argv", ["mirror.py", "--dry-run"]):
             self.assertEqual(mirror.main(), 0)
         renew.assert_not_called()
-        keepalive.assert_not_called()
 
     @patch.dict(os.environ, {"SOURCE_GITHUB_TOKEN": "github-placeholder",
                              "GITLAB_TOKEN": "old-placeholder"}, clear=True)
@@ -371,28 +367,6 @@ class RenewalIntegrationTests(unittest.TestCase):
         run.assert_not_called()
         api.return_value.request.assert_not_called()
         self.assertEqual(output.getvalue(), "failed: secret save failed\n")
-
-
-class KeepaliveTests(unittest.TestCase):
-    @patch("mirror.API")
-    def test_reenables_this_workflow(self, api):
-        mirror.keep_schedule_alive("saving-placeholder")
-        api.assert_called_once_with("https://api.github.com", "saving-placeholder", github=True)
-        api.return_value.request.assert_called_once_with(
-            "PUT", "/repos/puigjoaco/gitlab-mirror/actions/workflows/mirror.yml/enable")
-
-    @patch("mirror.API")
-    def test_failure_is_logged_and_not_fatal(self, api):
-        api.return_value.request.side_effect = mirror.APIError("PUT", 403)
-        output = io.StringIO()
-        with contextlib.redirect_stdout(output):
-            mirror.keep_schedule_alive("saving-placeholder")
-        self.assertEqual(output.getvalue(), "keepalive: failed: API PUT failed (HTTP 403)\n")
-
-    @patch("mirror.API")
-    def test_without_token_does_nothing(self, api):
-        mirror.keep_schedule_alive("")
-        api.assert_not_called()
 
 
 if __name__ == "__main__":

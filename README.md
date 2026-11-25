@@ -16,12 +16,11 @@ Add these repository **Actions secrets**:
 - `GITLAB_TOKEN`: GitLab personal access token for `puig.joaco`, with **api** and
   **write_repository** scopes. It is renewed automatically within 30 days of expiry.
 - `SECRETS_GITHUB_TOKEN`: GitHub fine-grained PAT for `puigjoaco`, restricted to
-  **this repository only**, with repository **Secrets: read and write** and
-  **Actions: read and write** permissions. This allows renewal to replace the
-  `GITLAB_TOKEN` Actions secret, and each run to re-enable this workflow so GitHub
-  never disables the schedule for inactivity.
+  **this repository only**, with repository **Secrets: read and write**
+  permission. This allows renewal to replace the `GITLAB_TOKEN` Actions secret.
 
-Renew both GitHub PAT secrets manually before their expiry. GitLab.com PATs last
+The GitHub tokens in use were created without an expiry date; if one is ever
+replaced by a token that expires, renew it before then. GitLab.com PATs last
 at most about one year: each normal run checks the GitLab token's expiry and, when
 due, rotates it with an expiry 364 days from the current UTC date. If GitLab rejects
 that date, rotation retries once using GitLab's default expiry. A token with no
@@ -40,11 +39,23 @@ GitLab copies have matching visibility on creation. Private GitHub repositories
 always make the GitLab copy private; existing private/internal copies are never
 made public. Names remain unchanged; paths GitLab rejects are reported as failures.
 
-The workflow runs on pushes to `main`, manually, and approximately every five
-minutes. GitHub may delay scheduled runs; schedules require the workflow on the
-default branch. GitHub disables schedules after 60 days without repository
-activity; each run re-enables the workflow through the API to prevent that
-(a failure is logged as `keepalive: failed` and does not fail the run).
+## When it runs
+
+GitHub's own schedules can be hours late, so the main clock is a Google Apps
+Script in the owner's Google account (`apps-script/`). Its time trigger starts
+`mirror.yml` every 10 minutes through the workflow dispatch API, using script
+property `GITHUB_DISPATCH_TOKEN`: a fine-grained PAT limited to this repository
+with **Actions: read and write**. Google emails the account owner when a
+trigger run fails. To set it up again: create a project at script.google.com,
+paste `apps-script/Code.gs` and `apps-script/appsscript.json`, add the script
+property, then run `installTrigger` once and authorize it.
+
+`mirror.yml` also runs on pushes to `main` and manually. It has no schedule, so
+GitHub's 60-day inactivity rule, which only disables scheduled workflows, never
+applies to it. `backup.yml` starts it hourly as a backup clock; GitHub may delay
+or skip those runs and disables `backup.yml` after 60 days without repository
+activity (re-enable it in the Actions tab if wanted).
+
 Runs cannot overlap. A run may take up to 60 minutes and each clone or push up
 to 25 minutes, so large repositories (about 1 GB) can be copied; idle runs only
 compare refs and finish quickly.

@@ -1,0 +1,16 @@
+name: Hourly backup trigger
+
+# Backup clock in case the Apps Script clock stops. GitHub may delay or skip
+# scheduled runs for hours, and disables this file after 60 days without
+# repository activity; mirror.yml keeps working either way.
+on:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    uses: ./.github/workflows/mirror.yml
+    secrets: inherit
